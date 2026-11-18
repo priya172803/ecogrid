@@ -1,0 +1,8 @@
+{
+  "name": "EcoGrid — Intelligent Energy Ecosystem & Dynamic Taxation",
+  "description": "Full-stack intelligent electricity consumption analysis, demand forecasting, dynamic tariff & carbon taxation engine, bill extraction, and government energy-policy monitoring platform.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

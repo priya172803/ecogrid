@@ -1,0 +1,508 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'vishnuachar74@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isVerifiedUser() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOptionalString(data, key, maxLen) {
+      return !(key in data) || data[key] == null || (data[key] is string && data[key].size() <= maxLen);
+    }
+
+    function isOptionalNumber(data, key, minVal, maxVal) {
+      return !(key in data) || data[key] == null || (data[key] is number && data[key] >= minVal && data[key] <= maxVal);
+    }
+
+    function isOptionalStringList(data, key, maxItems, maxItemLen) {
+      return !(key in data) || data[key] == null || (
+        data[key] is list &&
+        data[key].size() <= maxItems &&
+        (data[key].size() == 0 || (data[key][0] is string && data[key][0].size() <= maxItemLen))
+      );
+    }
+
+    function isValidConfidenceMap(c) {
+      return c is map &&
+        c.keys().hasOnly(['overall', 'identity', 'consumption', 'charges', 'uncertainFields']) &&
+        isOptionalString(c, 'overall', 24) &&
+        isOptionalString(c, 'identity', 24) &&
+        isOptionalString(c, 'consumption', 24) &&
+        isOptionalString(c, 'charges', 24) &&
+        isOptionalStringList(c, 'uncertainFields', 35, 60);
+    }
+
+    function isValidBillSnapshotMap(m) {
+      return m is map &&
+        m.keys().size() <= 35 &&
+        m.keys().hasOnly([
+          'consumerName', 'consumerNumber', 'provider', 'state', 'city',
+          'consumerCategory', 'tariffType', 'billingMonth', 'billingPeriodStart',
+          'billingPeriodEnd', 'billDate', 'dueDate', 'previousReading',
+          'currentReading', 'unitsConsumed', 'previousMonthConsumption',
+          'energyCharges', 'fixedCharges', 'demandCharges', 'fuelAdjustmentCharges',
+          'electricityDuty', 'taxes', 'otherCharges', 'subsidies', 'lateFees',
+          'totalBillAmount', 'paymentStatus', 'meterNumber', 'tariffDetails',
+          'extractionNotes', 'confidence'
+        ]) &&
+        isOptionalString(m, 'consumerName', 120) &&
+        isOptionalString(m, 'consumerNumber', 80) &&
+        isOptionalString(m, 'provider', 120) &&
+        isOptionalString(m, 'state', 80) &&
+        isOptionalString(m, 'city', 80) &&
+        isOptionalString(m, 'consumerCategory', 60) &&
+        isOptionalString(m, 'tariffType', 80) &&
+        isOptionalString(m, 'billingMonth', 40) &&
+        isOptionalString(m, 'billingPeriodStart', 40) &&
+        isOptionalString(m, 'billingPeriodEnd', 40) &&
+        isOptionalString(m, 'billDate', 40) &&
+        isOptionalString(m, 'dueDate', 40) &&
+        isOptionalNumber(m, 'previousReading', 0, 100000000) &&
+        isOptionalNumber(m, 'currentReading', 0, 100000000) &&
+        isOptionalNumber(m, 'unitsConsumed', 0, 100000000) &&
+        isOptionalNumber(m, 'previousMonthConsumption', 0, 100000000) &&
+        isOptionalNumber(m, 'energyCharges', 0, 100000000) &&
+        isOptionalNumber(m, 'fixedCharges', 0, 100000000) &&
+        isOptionalNumber(m, 'demandCharges', 0, 100000000) &&
+        isOptionalNumber(m, 'fuelAdjustmentCharges', 0, 100000000) &&
+        isOptionalNumber(m, 'electricityDuty', 0, 100000000) &&
+        isOptionalNumber(m, 'taxes', 0, 100000000) &&
+        isOptionalNumber(m, 'otherCharges', 0, 100000000) &&
+        isOptionalNumber(m, 'subsidies', 0, 100000000) &&
+        isOptionalNumber(m, 'lateFees', 0, 100000000) &&
+        isOptionalNumber(m, 'totalBillAmount', 0, 100000000) &&
+        isOptionalString(m, 'paymentStatus', 60) &&
+        isOptionalString(m, 'meterNumber', 80) &&
+        isOptionalStringList(m, 'tariffDetails', 15, 240) &&
+        isOptionalStringList(m, 'extractionNotes', 15, 300) &&
+        (!('confidence' in m) || m.confidence == null || isValidConfidenceMap(m.confidence));
+    }
+
+    // --- Validation Blueprints ---
+    function isValidDomesticProfile(p) {
+      return p is map &&
+        p.keys().hasOnly(['householdSize', 'sqFt', 'appliances', 'hvacUsageHours', 'wfhMembers', 'solarCapacityKw']) &&
+        (!('householdSize' in p) || (p.householdSize is number && p.householdSize >= 1 && p.householdSize <= 50)) &&
+        (!('sqFt' in p) || (p.sqFt is number && p.sqFt >= 100 && p.sqFt <= 50000)) &&
+        (!('appliances' in p) || (p.appliances is list && p.appliances.size() <= 20 && (p.appliances.size() == 0 || p.appliances[0] is string))) &&
+        (!('hvacUsageHours' in p) || (p.hvacUsageHours is number && p.hvacUsageHours >= 0 && p.hvacUsageHours <= 24)) &&
+        (!('wfhMembers' in p) || (p.wfhMembers is number && p.wfhMembers >= 0 && p.wfhMembers <= 30)) &&
+        (!('solarCapacityKw' in p) || (p.solarCapacityKw is number && p.solarCapacityKw >= 0 && p.solarCapacityKw <= 100));
+    }
+
+    function isValidCommercialProfile(p) {
+      return p is map &&
+        p.keys().hasOnly(['businessType', 'floorAreaSqFt', 'openTime', 'closeTime', 'operatingDaysPerWeek', 'occupancyCount', 'commercialLoads', 'sanctionedLoadKw']) &&
+        (!('businessType' in p) || (p.businessType is string && p.businessType.size() <= 80)) &&
+        (!('floorAreaSqFt' in p) || (p.floorAreaSqFt is number && p.floorAreaSqFt >= 100 && p.floorAreaSqFt <= 1000000)) &&
+        (!('openTime' in p) || (p.openTime is string && p.openTime.size() <= 16)) &&
+        (!('closeTime' in p) || (p.closeTime is string && p.closeTime.size() <= 16)) &&
+        (!('operatingDaysPerWeek' in p) || (p.operatingDaysPerWeek is number && p.operatingDaysPerWeek >= 1 && p.operatingDaysPerWeek <= 7)) &&
+        (!('occupancyCount' in p) || (p.occupancyCount is number && p.occupancyCount >= 1 && p.occupancyCount <= 50000)) &&
+        (!('commercialLoads' in p) || (p.commercialLoads is list && p.commercialLoads.size() <= 20 && (p.commercialLoads.size() == 0 || p.commercialLoads[0] is string))) &&
+        (!('sanctionedLoadKw' in p) || (p.sanctionedLoadKw is number && p.sanctionedLoadKw >= 1 && p.sanctionedLoadKw <= 50000));
+    }
+
+    function isValidIndustrialProfile(p) {
+      return p is map &&
+        p.keys().hasOnly(['industryType', 'shiftsPerDay', 'processes', 'contractDemandKva', 'powerFactor', 'hasBackupGenerator', 'solarCapacityKw']) &&
+        (!('industryType' in p) || (p.industryType is string && p.industryType.size() <= 80)) &&
+        (!('shiftsPerDay' in p) || (p.shiftsPerDay is number && p.shiftsPerDay >= 1 && p.shiftsPerDay <= 3)) &&
+        (!('processes' in p) || (p.processes is list && p.processes.size() <= 20 && (p.processes.size() == 0 || p.processes[0] is string))) &&
+        (!('contractDemandKva' in p) || (p.contractDemandKva is number && p.contractDemandKva >= 1 && p.contractDemandKva <= 500000)) &&
+        (!('powerFactor' in p) || (p.powerFactor is number && p.powerFactor >= 0.5 && p.powerFactor <= 1.0)) &&
+        (!('hasBackupGenerator' in p) || p.hasBackupGenerator is bool) &&
+        (!('solarCapacityKw' in p) || (p.solarCapacityKw is number && p.solarCapacityKw >= 0 && p.solarCapacityKw <= 100000));
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll([
+        'uid', 'fullName', 'email', 'role', 'category', 'state', 'city', 'pinCode', 'discom',
+        'rewardPointsBalance', 'totalCarbonOffsetKg', 'totalBillDiscountInr', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'uid', 'fullName', 'email', 'role', 'category', 'state', 'city', 'pinCode', 'discom',
+        'consumerId', 'propertyType', 'rewardPointsBalance', 'totalCarbonOffsetKg', 'totalBillDiscountInr',
+        'domesticProfile', 'commercialProfile', 'industrialProfile', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.uid) &&
+      data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 120 &&
+      data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+      data.role in ['domestic', 'commercial', 'industrial', 'government_admin'] &&
+      data.category in ['domestic', 'commercial', 'industrial'] &&
+      data.state is string && data.state.size() >= 1 && data.state.size() <= 80 &&
+      data.city is string && data.city.size() >= 1 && data.city.size() <= 80 &&
+      data.pinCode is string && data.pinCode.size() >= 1 && data.pinCode.size() <= 12 &&
+      data.discom is string && data.discom.size() >= 1 && data.discom.size() <= 100 &&
+      isOptionalString(data, 'consumerId', 60) &&
+      isOptionalString(data, 'propertyType', 80) &&
+      data.rewardPointsBalance is number && data.rewardPointsBalance >= 0 && data.rewardPointsBalance <= 10000000 &&
+      data.totalCarbonOffsetKg is number && data.totalCarbonOffsetKg >= 0 && data.totalCarbonOffsetKg <= 100000000 &&
+      data.totalBillDiscountInr is number && data.totalBillDiscountInr >= 0 && data.totalBillDiscountInr <= 10000000 &&
+      (!('domesticProfile' in data) || data.domesticProfile == null || isValidDomesticProfile(data.domesticProfile)) &&
+      (!('commercialProfile' in data) || data.commercialProfile == null || isValidCommercialProfile(data.commercialProfile)) &&
+      (!('industrialProfile' in data) || data.industrialProfile == null || isValidIndustrialProfile(data.industrialProfile)) &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidAdminRegistry(data) {
+      return data.keys().hasAll(['uid', 'email', 'department', 'designation', 'createdAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'department', 'designation', 'createdAt']) &&
+        isValidId(data.uid) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+        data.department is string && data.department.size() >= 1 && data.department.size() <= 120 &&
+        data.designation is string && data.designation.size() >= 1 && data.designation.size() <= 120 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidEnergyRecord(data) {
+      return data.keys().hasAll([
+        'userId', 'category', 'granularity', 'date', 'kwh', 'timePeriod', 'peakType',
+        'estimatedCostInr', 'carbonKg', 'source', 'notes', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'userId', 'category', 'granularity', 'date', 'kwh', 'timePeriod', 'peakType',
+        'estimatedCostInr', 'carbonKg', 'source', 'notes', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.userId) &&
+      data.category in ['domestic', 'commercial', 'industrial'] &&
+      data.granularity in ['hourly', 'daily', 'monthly'] &&
+      data.date is string && data.date.size() >= 4 && data.date.size() <= 20 &&
+      data.kwh is number && data.kwh >= 0 && data.kwh <= 10000000 &&
+      data.timePeriod is string && data.timePeriod.size() <= 40 &&
+      data.peakType in ['peak', 'off_peak', 'normal'] &&
+      data.estimatedCostInr is number && data.estimatedCostInr >= 0 && data.estimatedCostInr <= 100000000 &&
+      data.carbonKg is number && data.carbonKg >= 0 && data.carbonKg <= 100000000 &&
+      data.source in ['manual', 'bill_sync'] &&
+      data.notes is string && data.notes.size() <= 300 &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidElectricityBill(data) {
+      return data.keys().hasAll([
+        'userId', 'fileName', 'fileType', 'storageUrl', 'totalConsumptionKwh',
+        'totalBillAmount', 'extractionStatus', 'verifiedByUser', 'uploadedAt', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'userId', 'fileName', 'fileType', 'storageUrl', 'storagePath',
+        'consumerName', 'consumerNumber', 'provider', 'electricityProvider',
+        'state', 'city', 'consumerCategory', 'tariffType', 'billingMonth',
+        'billingPeriod', 'billingPeriodStart', 'billingPeriodEnd', 'billDate',
+        'billIssueDate', 'dueDate', 'previousReading', 'previousMeterReading',
+        'currentReading', 'currentMeterReading', 'unitsConsumed', 'totalConsumptionKwh',
+        'previousMonthConsumption', 'previousMonthConsumptionKwh',
+        'energyCharges', 'fixedCharges', 'demandCharges', 'fuelAdjustmentCharges',
+        'electricityDuty', 'taxes', 'otherCharges', 'subsidies', 'lateFees',
+        'totalBillAmount', 'paymentStatus', 'meterNumber',
+        'tariffDetails', 'extractionNotes', 'confidence',
+        'extractionStatus', 'extractedData', 'confirmedData',
+        'verifiedByUser', 'uploadedAt', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.userId) &&
+      data.fileName is string && data.fileName.size() >= 1 && data.fileName.size() <= 200 &&
+      data.fileType is string && data.fileType.size() >= 1 && data.fileType.size() <= 80 &&
+      data.storageUrl is string && data.storageUrl.size() <= 1200 &&
+      isOptionalString(data, 'storagePath', 400) &&
+      isOptionalString(data, 'consumerName', 120) &&
+      isOptionalString(data, 'consumerNumber', 80) &&
+      isOptionalString(data, 'provider', 120) &&
+      isOptionalString(data, 'electricityProvider', 120) &&
+      isOptionalString(data, 'state', 80) &&
+      isOptionalString(data, 'city', 80) &&
+      isOptionalString(data, 'consumerCategory', 60) &&
+      isOptionalString(data, 'tariffType', 80) &&
+      isOptionalString(data, 'billingMonth', 40) &&
+      isOptionalString(data, 'billingPeriod', 80) &&
+      isOptionalString(data, 'billingPeriodStart', 40) &&
+      isOptionalString(data, 'billingPeriodEnd', 40) &&
+      isOptionalString(data, 'billDate', 40) &&
+      isOptionalString(data, 'billIssueDate', 40) &&
+      isOptionalString(data, 'dueDate', 40) &&
+      isOptionalNumber(data, 'previousReading', 0, 100000000) &&
+      isOptionalNumber(data, 'previousMeterReading', 0, 100000000) &&
+      isOptionalNumber(data, 'currentReading', 0, 100000000) &&
+      isOptionalNumber(data, 'currentMeterReading', 0, 100000000) &&
+      isOptionalNumber(data, 'unitsConsumed', 0, 100000000) &&
+      data.totalConsumptionKwh is number && data.totalConsumptionKwh >= 0 && data.totalConsumptionKwh <= 100000000 &&
+      isOptionalNumber(data, 'previousMonthConsumption', 0, 100000000) &&
+      isOptionalNumber(data, 'previousMonthConsumptionKwh', 0, 100000000) &&
+      isOptionalNumber(data, 'energyCharges', 0, 100000000) &&
+      isOptionalNumber(data, 'fixedCharges', 0, 100000000) &&
+      isOptionalNumber(data, 'demandCharges', 0, 100000000) &&
+      isOptionalNumber(data, 'fuelAdjustmentCharges', 0, 100000000) &&
+      isOptionalNumber(data, 'electricityDuty', 0, 100000000) &&
+      isOptionalNumber(data, 'taxes', 0, 100000000) &&
+      isOptionalNumber(data, 'otherCharges', 0, 100000000) &&
+      isOptionalNumber(data, 'subsidies', 0, 100000000) &&
+      isOptionalNumber(data, 'lateFees', 0, 100000000) &&
+      data.totalBillAmount is number && data.totalBillAmount >= 0 && data.totalBillAmount <= 100000000 &&
+      isOptionalString(data, 'paymentStatus', 60) &&
+      isOptionalString(data, 'meterNumber', 80) &&
+      isOptionalStringList(data, 'tariffDetails', 15, 240) &&
+      isOptionalStringList(data, 'extractionNotes', 15, 300) &&
+      (!('confidence' in data) || data.confidence == null || isValidConfidenceMap(data.confidence)) &&
+      data.extractionStatus in ['confirmed', 'partial', 'manual_override'] &&
+      (!('extractedData' in data) || data.extractedData == null || isValidBillSnapshotMap(data.extractedData)) &&
+      (!('confirmedData' in data) || data.confirmedData == null || isValidBillSnapshotMap(data.confirmedData)) &&
+      data.verifiedByUser is bool &&
+      data.uploadedAt is timestamp &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidOffsetRedemption(data) {
+      return data.keys().hasAll([
+        'userId', 'rewardId', 'rewardTitle', 'rewardType', 'pointsSpent',
+        'carbonOffsetKg', 'discountInr', 'certificateCode', 'status', 'createdAt'
+      ]) &&
+      data.keys().hasOnly([
+        'userId', 'rewardId', 'rewardTitle', 'rewardType', 'pointsSpent',
+        'carbonOffsetKg', 'discountInr', 'certificateCode', 'status', 'createdAt'
+      ]) &&
+      isValidId(data.userId) &&
+      data.rewardId is string && data.rewardId.size() >= 1 && data.rewardId.size() <= 64 &&
+      data.rewardTitle is string && data.rewardTitle.size() >= 1 && data.rewardTitle.size() <= 120 &&
+      data.rewardType in ['carbon_offset', 'bill_discount'] &&
+      data.pointsSpent is number && data.pointsSpent > 0 && data.pointsSpent <= 1000000 &&
+      data.carbonOffsetKg is number && data.carbonOffsetKg >= 0 && data.carbonOffsetKg <= 1000000 &&
+      data.discountInr is number && data.discountInr >= 0 && data.discountInr <= 1000000 &&
+      data.certificateCode is string && data.certificateCode.size() >= 4 && data.certificateCode.size() <= 64 &&
+      data.status in ['completed', 'applied'] &&
+      data.createdAt is timestamp;
+    }
+
+    function isValidTariffPolicy(data) {
+      return data.keys().hasAll([
+        'state', 'category', 'discom', 'fixedChargePerMonth', 'demandChargePerKva',
+        'taxRatePercent', 'carbonTaxThresholdKwh', 'carbonTaxRatePerKwh',
+        'peakHourSurchargePercent', 'offPeakRebatePercent', 'subsidyUnitsLimit',
+        'subsidyDiscountPerKwh', 'gridEmissionFactorKgPerKwh', 'slabs', 'updatedBy', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'state', 'category', 'discom', 'fixedChargePerMonth', 'demandChargePerKva',
+        'taxRatePercent', 'carbonTaxThresholdKwh', 'carbonTaxRatePerKwh',
+        'peakHourSurchargePercent', 'offPeakRebatePercent', 'subsidyUnitsLimit',
+        'subsidyDiscountPerKwh', 'gridEmissionFactorKgPerKwh', 'slabs', 'updatedBy', 'updatedAt'
+      ]) &&
+      data.state is string && data.state.size() >= 1 && data.state.size() <= 80 &&
+      data.category in ['domestic', 'commercial', 'industrial'] &&
+      data.discom is string && data.discom.size() >= 1 && data.discom.size() <= 100 &&
+      data.fixedChargePerMonth is number && data.fixedChargePerMonth >= 0 && data.fixedChargePerMonth <= 1000000 &&
+      data.demandChargePerKva is number && data.demandChargePerKva >= 0 && data.demandChargePerKva <= 100000 &&
+      data.taxRatePercent is number && data.taxRatePercent >= 0 && data.taxRatePercent <= 50 &&
+      data.carbonTaxThresholdKwh is number && data.carbonTaxThresholdKwh >= 0 && data.carbonTaxThresholdKwh <= 10000000 &&
+      data.carbonTaxRatePerKwh is number && data.carbonTaxRatePerKwh >= 0 && data.carbonTaxRatePerKwh <= 100 &&
+      data.peakHourSurchargePercent is number && data.peakHourSurchargePercent >= 0 && data.peakHourSurchargePercent <= 100 &&
+      data.offPeakRebatePercent is number && data.offPeakRebatePercent >= 0 && data.offPeakRebatePercent <= 50 &&
+      data.subsidyUnitsLimit is number && data.subsidyUnitsLimit >= 0 && data.subsidyUnitsLimit <= 10000 &&
+      data.subsidyDiscountPerKwh is number && data.subsidyDiscountPerKwh >= 0 && data.subsidyDiscountPerKwh <= 100 &&
+      data.gridEmissionFactorKgPerKwh is number && data.gridEmissionFactorKgPerKwh > 0 && data.gridEmissionFactorKgPerKwh <= 2.5 &&
+      data.slabs is list && data.slabs.size() >= 1 && data.slabs.size() <= 8 && data.slabs[0] is map &&
+      isValidId(data.updatedBy) &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidPolicyAdvisory(data) {
+      return data.keys().hasAll([
+        'title', 'message', 'targetCategory', 'targetState', 'severity', 'createdBy', 'createdAt'
+      ]) &&
+      data.keys().hasOnly([
+        'title', 'message', 'targetCategory', 'targetState', 'severity', 'createdBy', 'createdAt'
+      ]) &&
+      data.title is string && data.title.size() >= 1 && data.title.size() <= 160 &&
+      data.message is string && data.message.size() >= 1 && data.message.size() <= 800 &&
+      data.targetCategory in ['all', 'domestic', 'commercial', 'industrial'] &&
+      data.targetState is string && data.targetState.size() >= 1 && data.targetState.size() <= 80 &&
+      data.severity in ['info', 'advisory', 'peak_alert'] &&
+      isValidId(data.createdBy) &&
+      data.createdAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isSignedIn() && (resource.data.uid == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isValidId(userId) &&
+        isVerifiedUser() &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == request.auth.uid &&
+        userId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        (incoming().role != 'government_admin' || isAdmin());
+      allow update: if isValidId(userId) &&
+        isVerifiedUser() &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            isOwner(userId) &&
+            incoming().role == existing().role &&
+            (
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'fullName', 'category', 'state', 'city', 'pinCode', 'discom',
+                'consumerId', 'propertyType', 'domesticProfile', 'commercialProfile',
+                'industrialProfile', 'updatedAt'
+              ]) ||
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'rewardPointsBalance', 'totalCarbonOffsetKg', 'totalBillDiscountInr', 'updatedAt'
+              ])
+            )
+          )
+        );
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && (isOwner(adminId) || isAdmin());
+      allow list: if isBootstrappedAdmin();
+      allow create: if isValidId(adminId) && isAdmin() && isValidAdminRegistry(incoming()) && incoming().createdAt == request.time;
+      allow update: if isValidId(adminId) && isAdmin() && isValidAdminRegistry(incoming()) && incoming().uid == existing().uid && incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(adminId) && isAdmin();
+    }
+
+    match /energyRecords/{recordId} {
+      allow get: if isValidId(recordId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isValidId(recordId) &&
+        isVerifiedUser() &&
+        isValidEnergyRecord(incoming()) &&
+        incoming().userId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(recordId) &&
+        isVerifiedUser() &&
+        isValidEnergyRecord(incoming()) &&
+        incoming().userId == existing().userId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            existing().userId == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'category', 'granularity', 'date', 'kwh', 'timePeriod', 'peakType',
+              'estimatedCostInr', 'carbonKg', 'notes', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isValidId(recordId) && isVerifiedUser() && (existing().userId == request.auth.uid || isAdmin());
+    }
+
+    match /bills/{billId} {
+      allow get: if isValidId(billId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isValidId(billId) &&
+        isVerifiedUser() &&
+        isValidElectricityBill(incoming()) &&
+        incoming().userId == request.auth.uid &&
+        incoming().verifiedByUser == true &&
+        incoming().uploadedAt == request.time &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(billId) &&
+        isVerifiedUser() &&
+        isValidElectricityBill(incoming()) &&
+        incoming().userId == existing().userId &&
+        incoming().uploadedAt == existing().uploadedAt &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            existing().userId == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'consumerName', 'consumerNumber', 'provider', 'electricityProvider',
+              'state', 'city', 'consumerCategory', 'tariffType', 'billingMonth',
+              'billingPeriod', 'billingPeriodStart', 'billingPeriodEnd', 'billDate',
+              'billIssueDate', 'dueDate', 'previousReading', 'previousMeterReading',
+              'currentReading', 'currentMeterReading', 'unitsConsumed', 'totalConsumptionKwh',
+              'previousMonthConsumption', 'previousMonthConsumptionKwh',
+              'energyCharges', 'fixedCharges', 'demandCharges', 'fuelAdjustmentCharges',
+              'electricityDuty', 'taxes', 'otherCharges', 'subsidies', 'lateFees',
+              'totalBillAmount', 'paymentStatus', 'meterNumber', 'tariffDetails',
+              'extractionStatus', 'confirmedData', 'verifiedByUser', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isValidId(billId) && isVerifiedUser() && (existing().userId == request.auth.uid || isAdmin());
+    }
+
+    match /offsetRedemptions/{redemptionId} {
+      allow get: if isValidId(redemptionId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isValidId(redemptionId) &&
+        isVerifiedUser() &&
+        isValidOffsetRedemption(incoming()) &&
+        incoming().userId == request.auth.uid &&
+        incoming().createdAt == request.time;
+      allow update: if isValidId(redemptionId) && isAdmin() && isValidOffsetRedemption(incoming()) && incoming().userId == existing().userId && incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(redemptionId) && isAdmin();
+    }
+
+    match /tariffPolicies/{policyId} {
+      allow get: if isValidId(policyId) && isSignedIn();
+      allow list: if isSignedIn() && (resource.data.category in ['domestic', 'commercial', 'industrial'] || isBootstrappedAdmin());
+      allow create: if isValidId(policyId) && isAdmin() && isValidTariffPolicy(incoming()) && incoming().updatedAt == request.time;
+      allow update: if isValidId(policyId) && isAdmin() && isValidTariffPolicy(incoming()) && incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'state', 'category', 'discom', 'fixedChargePerMonth', 'demandChargePerKva',
+          'taxRatePercent', 'carbonTaxThresholdKwh', 'carbonTaxRatePerKwh',
+          'peakHourSurchargePercent', 'offPeakRebatePercent', 'subsidyUnitsLimit',
+          'subsidyDiscountPerKwh', 'gridEmissionFactorKgPerKwh', 'slabs', 'updatedBy', 'updatedAt'
+        ]);
+      allow delete: if isValidId(policyId) && isAdmin();
+    }
+
+    match /policyAdvisories/{advisoryId} {
+      allow get: if isValidId(advisoryId) && isSignedIn();
+      allow list: if isSignedIn() && (resource.data.targetCategory in ['all', 'domestic', 'commercial', 'industrial'] || isBootstrappedAdmin());
+      allow create: if isValidId(advisoryId) && isAdmin() && isValidPolicyAdvisory(incoming()) && incoming().createdAt == request.time;
+      allow update: if isValidId(advisoryId) && isAdmin() && isValidPolicyAdvisory(incoming()) && incoming().createdAt == existing().createdAt &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['title', 'message', 'targetCategory', 'targetState', 'severity']);
+      allow delete: if isValidId(advisoryId) && isAdmin();
+    }
+  }
+}

@@ -1,0 +1,210 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Consumer or government administrator profile including category-specific energy profiling attributes and green reward balances.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "fullName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "email": { "type": "string", "minLength": 3, "maxLength": 160 },
+        "role": { "type": "string", "enum": ["domestic", "commercial", "industrial", "government_admin"] },
+        "category": { "type": "string", "enum": ["domestic", "commercial", "industrial"] },
+        "state": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "city": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "pinCode": { "type": "string", "minLength": 1, "maxLength": 12 },
+        "discom": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "consumerId": { "type": "string", "maxLength": 60 },
+        "propertyType": { "type": "string", "maxLength": 80 },
+        "rewardPointsBalance": { "type": "number" },
+        "totalCarbonOffsetKg": { "type": "number" },
+        "totalBillDiscountInr": { "type": "number" },
+        "domesticProfile": { "type": "object" },
+        "commercialProfile": { "type": "object" },
+        "industrialProfile": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "fullName", "email", "role", "category", "state", "city", "pinCode", "discom", "rewardPointsBalance", "totalCarbonOffsetKg", "totalBillDiscountInr", "createdAt", "updatedAt"]
+    },
+    "AdminRegistry": {
+      "title": "AdminRegistry",
+      "description": "Trusted government administrator registry for role verification.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "maxLength": 160 },
+        "department": { "type": "string", "maxLength": 120 },
+        "designation": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "department", "designation", "createdAt"]
+    },
+    "EnergyRecord": {
+      "title": "EnergyRecord",
+      "description": "Manual or bill-synced electricity consumption entry.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "category": { "type": "string", "enum": ["domestic", "commercial", "industrial"] },
+        "granularity": { "type": "string", "enum": ["hourly", "daily", "monthly"] },
+        "date": { "type": "string", "minLength": 4, "maxLength": 20 },
+        "kwh": { "type": "number" },
+        "timePeriod": { "type": "string", "maxLength": 40 },
+        "peakType": { "type": "string", "enum": ["peak", "off_peak", "normal"] },
+        "estimatedCostInr": { "type": "number" },
+        "carbonKg": { "type": "number" },
+        "source": { "type": "string", "enum": ["manual", "bill_sync"] },
+        "notes": { "type": "string", "maxLength": 300 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "category", "granularity", "date", "kwh", "timePeriod", "peakType", "estimatedCostInr", "carbonKg", "source", "notes", "createdAt", "updatedAt"]
+    },
+    "ElectricityBill": {
+      "title": "ElectricityBill",
+      "description": "Uploaded electricity bill with AI-extracted snapshot, user-verified billing parameters, and Storage reference.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "fileName": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "fileType": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "storageUrl": { "type": "string", "maxLength": 1200 },
+        "storagePath": { "type": "string", "maxLength": 400 },
+        "consumerName": { "type": "string", "maxLength": 120 },
+        "consumerNumber": { "type": "string", "maxLength": 80 },
+        "provider": { "type": "string", "maxLength": 120 },
+        "electricityProvider": { "type": "string", "maxLength": 120 },
+        "state": { "type": "string", "maxLength": 80 },
+        "city": { "type": "string", "maxLength": 80 },
+        "consumerCategory": { "type": "string", "maxLength": 60 },
+        "tariffType": { "type": "string", "maxLength": 80 },
+        "billingMonth": { "type": "string", "maxLength": 40 },
+        "billingPeriod": { "type": "string", "maxLength": 80 },
+        "billingPeriodStart": { "type": "string", "maxLength": 40 },
+        "billingPeriodEnd": { "type": "string", "maxLength": 40 },
+        "billDate": { "type": "string", "maxLength": 40 },
+        "billIssueDate": { "type": "string", "maxLength": 40 },
+        "dueDate": { "type": "string", "maxLength": 40 },
+        "previousReading": { "type": "number" },
+        "previousMeterReading": { "type": "number" },
+        "currentReading": { "type": "number" },
+        "currentMeterReading": { "type": "number" },
+        "unitsConsumed": { "type": "number" },
+        "totalConsumptionKwh": { "type": "number" },
+        "previousMonthConsumption": { "type": "number" },
+        "previousMonthConsumptionKwh": { "type": "number" },
+        "energyCharges": { "type": "number" },
+        "fixedCharges": { "type": "number" },
+        "demandCharges": { "type": "number" },
+        "fuelAdjustmentCharges": { "type": "number" },
+        "electricityDuty": { "type": "number" },
+        "taxes": { "type": "number" },
+        "otherCharges": { "type": "number" },
+        "subsidies": { "type": "number" },
+        "lateFees": { "type": "number" },
+        "totalBillAmount": { "type": "number" },
+        "paymentStatus": { "type": "string", "maxLength": 60 },
+        "meterNumber": { "type": "string", "maxLength": 80 },
+        "tariffDetails": { "type": "array" },
+        "extractionNotes": { "type": "array" },
+        "confidence": { "type": "object" },
+        "extractionStatus": { "type": "string", "enum": ["confirmed", "partial", "manual_override"] },
+        "extractedData": { "type": "object" },
+        "confirmedData": { "type": "object" },
+        "verifiedByUser": { "type": "boolean" },
+        "uploadedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "fileName", "fileType", "storageUrl", "totalConsumptionKwh", "totalBillAmount", "extractionStatus", "verifiedByUser", "uploadedAt", "createdAt", "updatedAt"]
+    },
+    "OffsetRedemption": {
+      "title": "OffsetRedemption",
+      "description": "Trackable carbon offset or tariff discount redemption ledger entry.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "rewardId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "rewardTitle": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "rewardType": { "type": "string", "enum": ["carbon_offset", "bill_discount"] },
+        "pointsSpent": { "type": "number" },
+        "carbonOffsetKg": { "type": "number" },
+        "discountInr": { "type": "number" },
+        "certificateCode": { "type": "string", "minLength": 4, "maxLength": 64 },
+        "status": { "type": "string", "enum": ["completed", "applied"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "rewardId", "rewardTitle", "rewardType", "pointsSpent", "carbonOffsetKg", "discountInr", "certificateCode", "status", "createdAt"]
+    },
+    "TariffPolicy": {
+      "title": "TariffPolicy",
+      "description": "Government-configured dynamic electricity tariff, ToD surcharge, subsidy, and carbon tax rule.",
+      "type": "object",
+      "properties": {
+        "state": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "category": { "type": "string", "enum": ["domestic", "commercial", "industrial"] },
+        "discom": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "fixedChargePerMonth": { "type": "number" },
+        "demandChargePerKva": { "type": "number" },
+        "taxRatePercent": { "type": "number" },
+        "carbonTaxThresholdKwh": { "type": "number" },
+        "carbonTaxRatePerKwh": { "type": "number" },
+        "peakHourSurchargePercent": { "type": "number" },
+        "offPeakRebatePercent": { "type": "number" },
+        "subsidyUnitsLimit": { "type": "number" },
+        "subsidyDiscountPerKwh": { "type": "number" },
+        "gridEmissionFactorKgPerKwh": { "type": "number" },
+        "slabs": { "type": "array" },
+        "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["state", "category", "discom", "fixedChargePerMonth", "demandChargePerKva", "taxRatePercent", "carbonTaxThresholdKwh", "carbonTaxRatePerKwh", "peakHourSurchargePercent", "offPeakRebatePercent", "subsidyUnitsLimit", "subsidyDiscountPerKwh", "gridEmissionFactorKgPerKwh", "slabs", "updatedBy", "updatedAt"]
+    },
+    "PolicyAdvisory": {
+      "title": "PolicyAdvisory",
+      "description": "Government energy policy notice or peak-demand advisory.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 800 },
+        "targetCategory": { "type": "string", "enum": ["all", "domestic", "commercial", "industrial"] },
+        "targetState": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "severity": { "type": "string", "enum": ["info", "advisory", "peak_alert"] },
+        "createdBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "message", "targetCategory", "targetState", "severity", "createdBy", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private user profiles with category-specific energy profiling attributes and reward balances."
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminRegistry" },
+      "description": "Government administrator role records."
+    },
+    "/energyRecords/{recordId}": {
+      "schema": { "$ref": "#/entities/EnergyRecord" },
+      "description": "Consumer electricity consumption logs."
+    },
+    "/bills/{billId}": {
+      "schema": { "$ref": "#/entities/ElectricityBill" },
+      "description": "Uploaded and verified electricity bill extractions."
+    },
+    "/offsetRedemptions/{redemptionId}": {
+      "schema": { "$ref": "#/entities/OffsetRedemption" },
+      "description": "Green reward point redemption receipts for virtual carbon offsets and bill rebates."
+    },
+    "/tariffPolicies/{policyId}": {
+      "schema": { "$ref": "#/entities/TariffPolicy" },
+      "description": "Active dynamic electricity tariff and carbon tax rules managed by government admins."
+    },
+    "/policyAdvisories/{advisoryId}": {
+      "schema": { "$ref": "#/entities/PolicyAdvisory" },
+      "description": "Government energy policy advisories and peak demand alerts."
+    }
+  }
+}
